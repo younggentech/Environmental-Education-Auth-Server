@@ -1,3 +1,5 @@
+# https://flask.palletsprojects.com/en/2.2.x/tutorial/database/
+# The only difference is the use of MySQL instead of SQLite
 import os
 
 import dotenv
@@ -12,7 +14,6 @@ dotenv.load_dotenv()
 
 def get_db():
     """
-    https://flask.palletsprojects.com/en/2.2.x/tutorial/database/
     A function returns a `g` instance which will be used for each request
     """
     if 'db' not in g:
@@ -38,7 +39,8 @@ def init_db():
     """Initiate the databased based on schema"""
     db, connection = get_db()
     with current_app.open_resource('schema.sql') as f:
-        db.execute(f.read().decode('utf8'))
+        for query in f.read().decode('utf8').split(';'):
+            db.execute(query)
 
 
 @click.command('init-db')
