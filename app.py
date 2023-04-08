@@ -1,10 +1,13 @@
 # Python standard libraries
 import json
 import os
+from uuid import uuid4
+
 import mysql.connector as connector
 
 # Third-party libraries
-from flask import Flask, redirect, request, url_for
+from email_validator import validate_email, EmailNotValidError
+from flask import Flask, redirect, request, url_for, jsonify, make_response
 from flask_login import (
     LoginManager,
     current_user,
@@ -16,6 +19,9 @@ from oauthlib.oauth2 import WebApplicationClient
 import requests
 
 # Internal imports
+from werkzeug.exceptions import HTTPException
+from werkzeug.security import generate_password_hash
+
 from db import init_db_command
 from user import User
 from providers import google_provider
@@ -62,14 +68,49 @@ def index():
         return '<a class="button" href="/login_with_google">Google Login</a>'
 
 
-@app.route('/login')
-def login():
-    return 'login'
-
-
-@app.route('/signup')
+@app.route('/signup', methods=['POST'])
 def signup():
-    return 'signup'
+    userdata = request.json
+    if 'name' not in userdata or 'email' not in userdata or 'role' not in userdata or 'password' not in userdata:
+        return 'name, email, role, password are required', 400
+    elif User.search_by_email(userdata['email']):
+        return 'User already exists', 400
+    try:
+        validated_email = validate_email(userdata['email'], check_deliverability=True)
+    except EmailNotValidError:
+        return 'Not Valid Email', 400
+    try:
+        id_ = str(uuid4())
+        user = User(id_=id_, name=userdata["name"], email=validated_email.email,
+                    verified_email=0, role=userdata["role"],
+                    password=generate_password_hash(userdata["password"]),
+                    profile_pic="")
+        User.create(id_=id_, name=userdata["name"], email=validated_email.email,
+                    verified_email=0, role=userdata["role"],
+                    password=generate_password_hash(userdata["password"]),
+                    profile_pic="")
+    except Exception as e:
+        print(e)
+        return 'Try again later', 500
+    print(user)
+    login_user(user)
+    return redirect(url_for('index'))
+
+
+@app.route('/login', methods=['POST'])
+def login():
+    userdata = request.json
+    if 'email' not in userdata or 'password' not in userdata:
+        return 'credentials are required', 403
+    try:
+        validated_email = validate_email(userdata['email'], check_deliverability=False)
+    except EmailNotValidError:
+        return 'Not Valid Email', 400
+    user = User.search_by_email(validated_email.email)
+    if not user.check_password(userdata["password"]):
+        return 'invalid credentials', 403
+    login_user(user)
+    return redirect(url_for('index'))
 
 
 @app.route('/login_with_google')
@@ -79,7 +120,9 @@ def login_with_google():
         authorisation_endpoint,
         redirect_uri=request.base_url + "/callback",
         scope=['openid', 'email', 'profile'])
-    return redirect(request_uri)
+    response = make_response(redirect(request_uri))
+    response.set_cookie('referrer', request.referrer)
+    return response
 
 
 @app.route('/login_with_google/callback')
@@ -109,11 +152,13 @@ def google_callback():
     else:
         return "Email is not verified by Google or missed. Try again or register with EnvEd.", 400
     # Create a user object
-    user = User(id_=google_id, email=user_email, profile_pic=picture, name=user_name, verified_email=1, role=None)
+    user = User(id_=google_id, email=user_email, profile_pic=picture, name=user_name, verified_email=1,
+                role=None, password=None)
     if not User.get(google_id):
         User.create(id_=google_id, email=user_email, profile_pic=picture, name=user_name, verified_email=1)
     login_user(user)
-    return redirect(url_for('index'))
+    redirect_to = request.cookies.get('referrer')
+    return redirect(redirect_to if redirect_to else url_for('index'))
 
 
 @app.route("/logout")
