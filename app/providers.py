@@ -5,7 +5,7 @@ import requests
 
 import jwt
 
-from user import User
+from .user import User
 
 
 class Provider:

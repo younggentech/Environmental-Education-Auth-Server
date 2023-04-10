@@ -5,7 +5,7 @@ from typing import Optional
 from flask_login import UserMixin
 from werkzeug.security import check_password_hash
 
-from db import get_db
+from .db import get_db
 
 
 class User(UserMixin):
@@ -82,14 +82,37 @@ class User(UserMixin):
         return user
 
     @staticmethod
-    def create(id_, name, email, verified_email, profile_pic, role=None, password=None) -> None:
+    def create(name, email, verified_email, profile_pic, role=None, password=None) -> None:
         """Create a new user"""
         db, connection = get_db()
-        statement = 'INSERT INTO user (id, name, email, verified_email, role, profile_pic, password) ' \
-                    'VALUES (%s, %s, %s, %s, %s, %s, %s)'
+        statement = 'INSERT INTO User (name, email, verified_email, role, profile_pic, password) ' \
+                    'VALUES (%s, %s, %s, %s, %s, %s)'
         db.execute(
             statement,
-            (id_, name, email, verified_email, role, profile_pic, password),
+            (name, email, verified_email, role, profile_pic, password),
         )
         connection.commit()
 
+    def update_user_info(self, name: Optional[str] = None, profile_pic: Optional[str] = None):
+        """Update public info"""
+        db, connection = get_db()
+        statement = 'UPDATE User SET name=%s, profile_pic=%s WHERE id=%s'
+        db.execute(
+            statement,
+            (name if name else self.name, profile_pic if profile_pic else self.profile_pic, self.id),
+        )
+        connection.commit()
+
+    def verify_email(self):
+        """Set email as verified"""
+        db, connection = get_db()
+        statement = 'UPDATE User SET verified_email=1 WHERE id=%s'
+        db.execute(
+            statement,
+            (self.id,),
+        )
+        connection.commit()
+
+    def set_role(self):
+        """Set user's role"""
+        pass

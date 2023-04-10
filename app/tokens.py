@@ -8,7 +8,7 @@ import os
 
 import jwt
 
-from db import get_db  # used to get cursor and connection
+from .db import get_db  # used to get cursor and connection
 
 
 def is_blacklisted(token: str) -> bool:
