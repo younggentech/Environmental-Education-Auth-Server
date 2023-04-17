@@ -3,6 +3,9 @@ import abc
 import typing as tp
 import hashlib
 import datetime
+import os
+
+import jwt
 
 from .. import tokens
 
@@ -21,7 +24,17 @@ class Verifier(abc.ABC):
         "OK" - token is valid
         msg - explanation where was the problem
         """
-        pass
+        raise NotImplementedError
+
+    @classmethod
+    def decode_token(cls, token: str) -> tp.Tuple[bool, dict]:
+        """Decodes token, verifies whether it is correct or not"""
+        try:
+            verified = jwt.decode(token, os.environ.get("SECRET_KEY"), algorithms="HS256")
+        except jwt.exceptions.PyJWTError as error:
+            print(error)  # TODO: LOGGING
+            return False, {"status": "Fail", "msg": f"{error}"}
+        return True, verified
 
 
 class TokenVerifier(Verifier):
@@ -31,12 +44,14 @@ class TokenVerifier(Verifier):
         """
         Follows conventions from the interface
         """
-        verification_status, verified = tokens.decode_token(token)
+        verification_status, verified = cls.decode_token(token)
         print(verification_status, verified)  # TODO: LOGGING
         if not verification_status:  # checks if the token was signed by the server
             return verified
         # checks if the token was blacklisted
-        if tokens.Token.query.filter_by(token_hash=hashlib.sha256(token.encode()).hexdigest()).first():
+        if tokens.Token.query.filter_by(
+                token_hash=hashlib.sha256(token.encode()).hexdigest()
+                ).first():
             return {"status": "Fail", "msg": "token is blacklisted"}
         if verified['exp'] < datetime.datetime.now().timestamp():  # checks if token is expired
             return {"status": "Fail", "msg": "token is expired"}
@@ -52,10 +67,12 @@ class LogoutVerifier(Verifier):
         """
         Follows conventions from the interface
         """
-        verification_status, verified = tokens.decode_token(token)
+        verification_status, verified = cls.decode_token(token)
         if not verification_status:  # check if the token was verified successfully
             return verified
         # check if the token wasn't blacklisted before
-        if tokens.Token.query.filter_by(token_hash=hashlib.sha256(token.encode()).hexdigest()).first():
+        if tokens.Token.query.filter_by(
+            token_hash=hashlib.sha256(token.encode()).hexdigest()
+            ).first():
             return {"status": "Fail", "msg": "Already blacklisted"}
         return {"status": "OK", "exp": verified["exp"]}

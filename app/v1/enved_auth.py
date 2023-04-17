@@ -1,5 +1,4 @@
 """A Blueprint handling authentication routes"""
-import datetime
 import hashlib
 
 from email_validator import validate_email, EmailNotValidError
@@ -8,7 +7,7 @@ from flask_login import login_user, logout_user, login_required
 from werkzeug.security import generate_password_hash
 
 from . import db
-from .tokens import generate_token, decode_token, Token
+from .tokens import generate_token, Token
 from .user import User, check_password, PendingUser
 from .utils import verifier
 

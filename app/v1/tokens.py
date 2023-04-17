@@ -4,7 +4,6 @@ To ensure that database will not be full of unused tokens,
 MySQL runs an event to delete expired tokens every 24 hours.
 """
 import os
-import typing as tp
 
 import jwt
 
@@ -23,13 +22,3 @@ class Token(db.Model):
 def generate_token(user: User) -> str:
     """Generates jwt token and signs it with the secret key"""
     return jwt.encode(to_dict(user), os.environ.get("SECRET_KEY"), algorithm="HS256")
-
-
-def decode_token(token: str) -> tp.Tuple[bool, dict]:
-    """Decodes token, verifies whether it is correct or not"""
-    try:
-        verified = jwt.decode(token, os.environ.get("SECRET_KEY"), algorithms="HS256")
-    except jwt.exceptions.PyJWTError as error:
-        print(error)  # TODO: LOGGING
-        return False, {"status": "Fail", "msg": f"{error}"}
-    return True, verified
