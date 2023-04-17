@@ -1,10 +1,10 @@
 """Main Blueprint with routes about user and index"""
-from flask import Blueprint
+import flask
 from flask_login import current_user, LoginManager
 
 from .user import User
 
-main = Blueprint('main', __name__)
+main = flask.Blueprint('main', __name__)
 
 login_manager = LoginManager()
 
@@ -24,6 +24,6 @@ def index():  # index route to be changed
             f"<p>Hello, {current_user.name}! You're logged in! Email: {current_user.email}</p>"
             "<div><p>Google Profile Picture:</p>"
             f'<img src="{current_user.profile_pic}" alt="Google profile pic"></img></div>'
-            '<a class="button" href="/logout">Logout</a>'
+            f'<a class="button" href="{flask.url_for("enved_auth.logout")}">Logout</a>'
         )
-    return '<a class="button" href="/login_with_google">Google Login</a>'
+    return f'<a class="button" href="{flask.url_for("google_auth.login_with_google")}">Google Login</a>'

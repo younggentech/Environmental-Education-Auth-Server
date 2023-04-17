@@ -8,6 +8,23 @@ from sqlalchemy_utils import ChoiceType
 from . import db
 
 
+class PendingUser(db.Model):
+    """A tabble where unverified users are stored"""
+    TYPES = [
+        ('Student', 'Student'),
+        ('Teacher', 'Teacher'),
+        ('School', 'School')
+    ]
+    __tablename__ = 'PendingUser'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    name = db.Column(db.String(100))
+    email = db.Column(db.String(200), unique=True, index=True)
+    verified_email = db.Column(db.Boolean, default=False)
+    role = db.Column(ChoiceType(TYPES))
+    profile_pic = db.Column(db.String(200))
+    password = db.Column(db.String(255))
+
+
 class User(UserMixin, db.Model):
     """User data model for SQLAlchemy and Flask-login"""
     TYPES = [

@@ -8,8 +8,9 @@ from flask_login import login_user, logout_user, login_required
 from werkzeug.security import generate_password_hash
 
 from . import db
-from .tokens import generate_token, verify_token, Token
-from .user import User, check_password
+from .tokens import generate_token, decode_token, Token
+from .user import User, check_password, PendingUser
+from .utils import verifier
 
 enved_auth = Blueprint('enved_auth', __name__)
 
@@ -33,23 +34,26 @@ def signup():
         return 'name, email, role, password are required', 400
     # validate that the user doesn't exist
     if User.query.filter_by(email=userdata['email']).first():
-        return 'User already exists', 400
+        return 'User already exists', 409
+    if PendingUser.query.filter_by(email=userdata['email']).first():
+        return {"status": "Verify"}
     try:  # validate email and check deliverability
         validated_email = validate_email(userdata['email'],
-                                         check_deliverability=True)
+                                        check_deliverability=True)
     except EmailNotValidError:
         return 'Not Valid Email', 400
     try:
         # create user
-        user = User(name=userdata["name"], email=validated_email.email,
-                    verified_email=0, role=userdata["role"],
-                    password=generate_password_hash(userdata["password"]),
-                    profile_pic="")
+        user = PendingUser(name=userdata["name"], email=validated_email.email,
+                            verified_email=0, role=userdata["role"],
+                            password=generate_password_hash(userdata["password"]),
+                            profile_pic="")
         db.session.add(user)
         db.session.commit()
-        login_user(user)  # login user
+        # generate verification code
+        # call emailing service
         # generate token and return it with the user id
-        return {"token": generate_token(user), "uid": user.id}
+        return {"status": "Verify"}
     except KeyError:
         return 'unavailable role', 400
 
@@ -71,7 +75,7 @@ def login():
         return 'credentials are required', 403
     try:  # validate email
         validated_email = validate_email(userdata['email'],
-                                         check_deliverability=False)
+                                        check_deliverability=False)
     except EmailNotValidError:
         return 'Not Valid Email', 400
     user = User.query.filter_by(email=validated_email.email).first()  # try to find user by email
@@ -101,19 +105,7 @@ def verify():
     if 'token' not in data:  # check if token field exists
         return 'No token provided', 400
     token = data["token"]
-    verified = verify_token(token)
-    print(verified)
-    if not verified:  # checks if the token was signed by the server
-        return {"status": "Fail", "msg": "unable to verify"}
-    # checks if the token was blacklisted
-    if Token.query.filter_by(token_hash=hashlib.sha256(token.encode()).hexdigest()).first():
-        return {"status": "Fail", "msg": "token is blacklisted"}
-    if verified['exp'] < datetime.datetime.now().timestamp():  # checks if token is expired
-        return {"status": "Fail", "msg": "token is expired"}
-    if not verified["verifiedEmail"]:
-        return {"status": "Verify", "msg": "email verification required"}
-
-    return {"status": "OK", "msg": "token is valid"}
+    return verifier.TokenVerifier.verify(token=token)
 
 
 @enved_auth.route("/logout")
@@ -135,15 +127,12 @@ def logout_post_request():
     if 'token' not in data:  # check if required field exists
         return 'No token provided', 400
     token = data['token']
-    verified = verify_token(token)
-    if not verified:  # check if the token was verified successfully
-        return "Invalid token", 400
-    # check if the token wasn't blacklisted before
-    if Token.query.filter_by(token_hash=hashlib.sha256(token.encode()).hexdigest()).first():
-        return "Already blacklisted", 400
+    verified = verifier.LogoutVerifier.verify(token)
+    if verified["status"] != "OK":
+        return verified
     try:  # blacklist the token
         new_token = Token(token_hash=hashlib.sha256(token.encode()).hexdigest(),
-                          expiry_time=verified["exp"])
+                        expiry_time=verified["exp"])
         db.session.add(new_token)
         db.session.commit()
         return {"status": "OK"}
