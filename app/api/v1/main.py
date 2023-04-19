@@ -2,7 +2,7 @@
 import flask
 from flask_login import current_user, LoginManager
 
-from .user import User
+from app.user import User
 
 main = flask.Blueprint('main', __name__)
 

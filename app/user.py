@@ -5,7 +5,7 @@ from math import floor
 from flask_login import UserMixin
 from werkzeug.security import check_password_hash
 from sqlalchemy_utils import ChoiceType
-from . import db
+from app.main import db
 
 
 class PendingUser(db.Model):
@@ -53,7 +53,7 @@ def to_dict(user: User) -> dict:
         "role": str(user.role),
         "profilePic": user.profile_pic,
         "iat": floor(datetime.datetime.now().timestamp()),
-        "exp": floor((datetime.datetime.now() + datetime.timedelta(hours=24)).timestamp())
+        "exp": floor((datetime.datetime.now() + datetime.timedelta(hours=12)).timestamp())
     }
 
 

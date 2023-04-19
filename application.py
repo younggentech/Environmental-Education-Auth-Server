@@ -1,5 +1,5 @@
 """Initiates the flask app with create_app() factory and runs it"""
-from app.v1 import create_app
+from app.main import create_app
 
 application = create_app()
 

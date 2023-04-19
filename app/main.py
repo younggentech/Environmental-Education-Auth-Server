@@ -4,7 +4,6 @@ import os
 from flask_sqlalchemy import SQLAlchemy
 import dotenv
 from flask import Flask
-from mysql import connector
 
 db = SQLAlchemy()
 
@@ -22,13 +21,13 @@ def create_app() -> Flask:
     with app.app_context():
         db.create_all()
 
-    from .main import main
-    from .enved_auth import enved_auth
-    from .google_auth import google_auth
+    from .api.v1.main import main
+    from .api.v1.enved_auth import enved_auth
+    from .api.v1.google_auth import google_auth
     app.register_blueprint(main)
     app.register_blueprint(enved_auth, url_prefix='/v1')
     app.register_blueprint(google_auth)
 
-    from .main import login_manager
+    from .api.v1.main import login_manager
     login_manager.init_app(app)
     return app

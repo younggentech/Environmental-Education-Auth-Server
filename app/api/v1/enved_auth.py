@@ -1,17 +1,17 @@
 """A Blueprint handling authentication routes"""
-import hashlib
-
+import json
+import flask
 from email_validator import validate_email, EmailNotValidError
-from flask import Blueprint, request, redirect, url_for
 from flask_login import login_user, logout_user, login_required
 from werkzeug.security import generate_password_hash
 
-from . import db
-from .tokens import generate_token, Token
-from .user import User, check_password, PendingUser
-from .utils import verifier
+from app import dto
+from app.main import db
+from app.tokens import Token
+from app.user import User, check_password, PendingUser
+from app.utils import verifier
 
-enved_auth = Blueprint('enved_auth', __name__)
+enved_auth = flask.Blueprint('enved_auth', __name__)
 
 
 @enved_auth.route('/signup', methods=['POST'])
@@ -26,7 +26,7 @@ def signup():
     password: str - password will be hashed
     :return: json
     """
-    userdata = request.json
+    userdata = flask.request.json
     # validate if all the necessary information is available
     if 'name' not in userdata or 'email' not in userdata \
             or 'role' not in userdata or 'password' not in userdata:
@@ -66,25 +66,18 @@ def login():
     email: str,
     password: str,
     Checks the credentials and issues a jwt token
-    :return: json
+    returns json
     """
-    userdata = request.json
+    verified = verifier.LoginVerifier.verify(flask.request.json)
     # check if reqiered fields are presented
-    if 'email' not in userdata or 'password' not in userdata:
-        return 'credentials are required', 403
-    try:  # validate email
-        validated_email = validate_email(userdata['email'],
-                                        check_deliverability=False)
-    except EmailNotValidError:
-        return 'Not Valid Email', 400
-    user = User.query.filter_by(email=validated_email.email).first()  # try to find user by email
-    if not user:  # if no user found return 404
-        return 'User Not Found', 404
-    if not check_password(user.password, userdata["password"]):  # validate password
-        return 'invalid credentials', 403
-    login_user(user)
+    if not verified["status"] == "OK":
+        return flask.Response(response=json.dumps(verified),
+                                    status=verified.get('code', 200),
+                                    mimetype='application/json')
+    current_user = User.query.filter_by(id=verified["uid"]).first()
+    login_user(current_user)
     # return jwt token and user id
-    return {"token": generate_token(user), "uid": user.id}
+    return {"token": dto.Token.generate_token(current_user), "uid": current_user.id}
 
 
 @enved_auth.route('/verify', methods=["POST"])
@@ -98,13 +91,11 @@ def verify():
     "Fail" - verification was not successfull
     "Verify" - email verification required
     "OK" - token is valid
-    msg - explanation where was the problem
     """
-    data = request.json
-    if 'token' not in data:  # check if token field exists
-        return 'No token provided', 400
-    token = data["token"]
-    return verifier.TokenVerifier.verify(token=token)
+    verified= verifier.TokenVerifier.verify(flask.request.json)
+    return flask.Response(response=json.dumps(verified),
+                                    status=verified.get('code', 200),
+                                    mimetype='application/json')
 
 
 @enved_auth.route("/logout")
@@ -112,7 +103,7 @@ def verify():
 def logout():
     """Get request logout form with Flask-login"""
     logout_user()
-    return redirect(url_for("main.index"))
+    return flask.redirect(flask.url_for("main.index"))
 
 
 @enved_auth.route("/logout", methods=["POST"])
@@ -122,19 +113,14 @@ def logout_post_request():
     Required Fields:
     token: str - a jwt token to be annulated
     """
-    data = request.json
-    if 'token' not in data:  # check if required field exists
-        return 'No token provided', 400
-    token = data['token']
-    verified = verifier.LogoutVerifier.verify(token)
+    verified = verifier.LogoutVerifier.verify(flask.request.json)
     if verified["status"] != "OK":
-        return verified
-    try:  # blacklist the token
-        new_token = Token(token_hash=hashlib.sha256(token.encode()).hexdigest(),
-                        expiry_time=verified["exp"])
-        db.session.add(new_token)
-        db.session.commit()
-        return {"status": "OK"}
-    except Exception as error:
-        print("logout", error)  # TODO: LOGGING
-        return 'Try again later', 500
+        return flask.Response(response=json.dumps(verified),
+                                    status=verified.get('code', 200),
+                                    mimetype='application/json')
+
+    if not dto.Token.blacklist_token(verified['token']):
+        return flask.Response(response=json.dumps({"code": 500, "status": "Fail", "msg": "server-side error"}),
+                                    status=500,
+                                    mimetype='application/json')
+    return {"status": "ok", "msg": ""}

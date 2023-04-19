@@ -6,9 +6,9 @@ from flask import Blueprint, request, make_response, redirect, url_for
 from flask_login import login_user
 from oauthlib.oauth2 import WebApplicationClient
 
-from . import db
+from app.main import db
 from .providers import google_provider
-from .user import User
+from app.user import User
 
 google_auth = Blueprint('google_auth', __name__)
 client = WebApplicationClient(google_provider.client_id)
