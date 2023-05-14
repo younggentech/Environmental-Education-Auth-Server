@@ -2,12 +2,21 @@
 import abc
 import hashlib
 import datetime
-import typing as tp
+import time
 
 import email_validator
 
 from app import tokens, user
 import app.dto as dto
+
+
+def verify_email(email: str) -> dict:
+    try:  # validate email
+        validated_email = email_validator.validate_email(email,
+                                                         check_deliverability=False)
+        return {"status": "OK", "email": validated_email.email}
+    except email_validator.EmailNotValidError:
+        return {"code": 400, "status": "Fail", "msg": "Not Valid Email"}
 
 
 class Verifier(abc.ABC):
@@ -42,9 +51,7 @@ class TokenVerifier(Verifier):
             return {"status": "Fail", "msg": "token is blacklisted"}
         if verified['exp'] < datetime.datetime.now().timestamp():  # checks if token is expired
             return {"status": "Fail", "msg": "token is expired"}
-        if not verified["verifiedEmail"]:
-            return {"status": "Verify", "msg": "email verification required"}
-        return {"status": "OK", "msg": "token is valid"}
+        return {"status": "OK", "msg": "token is valid", "token": token}
 
 
 class LogoutVerifier(Verifier):
@@ -74,14 +81,50 @@ class LoginVerifier(Verifier):
     def verify(cls, data: dict) -> dict:
         if 'email' not in data or 'password' not in data:
             return {"code": 400, "status": "Fail", "msg": "Credentials are required"}
-        try:  # validate email
-            validated_email = email_validator.validate_email(data['email'],
-                                        check_deliverability=False)
-        except email_validator.EmailNotValidError:
-            return {"code": 400, "status": "Fail", "msg": "Not Valid Email"}
-        fu: user.User = user.User.query.filter_by(email=validated_email.email).first()  # try to find user by email
+        validated_email_response = verify_email(data["email"])
+        if not validated_email_response.get('email'):
+            return validated_email_response
+        validated_email = validated_email_response.get('email')
+        fu: user.User = user.User.query.filter_by(email=validated_email).first()  # try to find user by email
         if not fu:  # if no user found return 404
             return {"code": 404, "status": "Fail", "msg": "User Not Found"}
         if not user.check_password(fu.password, data["password"]):  # validate password
             return {"code": 403, "status": "Fail", "msg": "invalid credentials"}
         return {"status": "OK", "uid": fu.id}
+
+
+class VerifyAccount(Verifier):
+    """Verifier used in verify_account route"""
+    @classmethod
+    def verify(cls, data: dict) -> dict:
+        if 'email' not in data or 'code' not in data:
+            return {"code": 400, "status": "Fail", "msg": "Credentials are required"}
+        validated_email_response = verify_email(data["email"])
+        if not validated_email_response.get('email'):
+            return validated_email_response
+        pu: user.PendingUser = user.PendingUser.query.filter_by(email=validated_email_response.get('email')).first()
+        if not pu:  # if no user found return 404
+            return {"code": 404, "status": "Fail", "msg": "User Not Found"}
+        if time.time() - pu.registration_time > 600:
+            return {"code": 400, "status": "Fail", "msg": "OTP Expired"}
+        if str(pu.otp) != str(data["code"]):
+            return {"code": 400, "status": "Fail", "msg": "OTP Incorrect"}
+        return {"status": "OK", "email": validated_email_response.get('email')}
+
+
+class ResendVerification(Verifier):
+    """Verifier used in resend_verification route"""
+    @classmethod
+    def verify(cls, data: dict) -> dict:
+        if 'email' not in data:
+            return {"code": 400, "status": "Fail", "msg": "Email is required"}
+        validated_email_response = verify_email(data["email"])
+        if not validated_email_response.get('email'):
+            return validated_email_response
+        pu: user.PendingUser = user.PendingUser.query.filter_by(email=validated_email_response.get('email')).first()
+        if not pu:  # if no user found return 404
+            return {"code": 404, "status": "Fail", "msg": "User Not Found"}
+        if time.time() - pu.registration_time < 120:
+            return {"code": 400, "status": "Fail", "msg": "Too many requests",
+                    "left": int(120 - time.time() + pu.registration_time)}
+        return {"status": "OK", "email": validated_email_response.get('email')}

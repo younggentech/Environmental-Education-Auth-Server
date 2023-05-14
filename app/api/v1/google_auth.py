@@ -8,7 +8,8 @@ from oauthlib.oauth2 import WebApplicationClient
 
 from app.main import db
 from .providers import google_provider
-from app.user import User
+from app.user import User, to_dict
+from ... import dto
 
 google_auth = Blueprint('google_auth', __name__)
 client = WebApplicationClient(google_provider.client_id)
@@ -27,7 +28,7 @@ def login_with_google():
     # prepare response
     response = make_response(redirect(request_uri))
     # set cookie to know where to redirect back
-    response.set_cookie('referrer', request.referrer)
+    response.set_cookie('referrer', request.args.get("referrer", request.referrer))
     return response
 
 
@@ -68,14 +69,12 @@ def google_callback():
     # Create a user object
     user = User.query.filter_by(email=user_email).first()
     if not user:
-        user = User(email=user_email, profile_pic=picture, name=user_name, verified_email=1)
+        user = User(email=user_email, profile_pic=picture, name=user_name)
         db.session.add(user)
         db.session.commit()
-    if not user.verified_email:
-        user.verified_email = True
-        db.session.commit()
     login_user(user)
-    # code = generate_token(user)  # generate a jwt token
-    redirect_to = request.cookies.get('referrer')  # get cookie with original referrer
+    token = dto.Token.generate_token(user)  # generate a jwt token
+    redirect_to = request.cookies.get('referrer', url_for('main.index'))  # get cookie with original referrer
+    response = make_response(redirect(redirect_to+f"?token={token}"))
     # redirect to the original website if cookie exists, otherwise to main page
-    return redirect(redirect_to if redirect_to else url_for('main.index'))
+    return response
